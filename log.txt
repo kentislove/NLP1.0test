@@ -1,0 +1,5 @@
+架構環境
+程式放在github's repository
+透過render開一個instance
+經過deploy後 開啟gradio的AI機器人對話窗
+背景是透過render's FAISS+Cohere的NLP去判斷訊息進而回訊

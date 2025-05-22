@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+gradio
+openai
+langchain
+langchain-community
+huggingface_hub
+sentence-transformers
+faiss-cpu
+unstructured
+pypdf
+python-docx
+xlrd
+langchain-huggingface
+langchain-openai
+langchain-cohere
+cohere

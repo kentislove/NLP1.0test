@@ -1,0 +1,12 @@
+增加加入「分批向量化 + 睡眠等待」的控制，避免 token 超限錯誤
+•	build_vector_store 和 add_new_files_to_vector_store 函式中，改成分批（每20筆）處理，
+每批處理後睡眠 2 秒，避免 token 呼叫速率過高。
+•	繼續加大 wait_sec，降低呼叫頻率
+
+加一個 log_conversation 寫 txt 檔（含來源/用戶/問/答）
+
+每個進入點（Gradio、API、LINE）問答後都呼叫此函式
+
+可下載 txt 檔
+
+對話格式清晰，方便二次處理
