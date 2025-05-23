@@ -18,3 +18,5 @@ cohere
 transformers>=4.40.0
 torch>=2.1.0
 httpx
+langchain-cohere
+
