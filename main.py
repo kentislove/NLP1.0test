@@ -121,56 +121,7 @@ def rag_answer(question):
         return f"此問題屬於「{intent}」類型，建議參考：{url}\n\n可直接聯絡我們歡樂旅遊，Email：service@happytravel.com，電話：02-1234-5678"
     return f"{answer}\n\n可直接聯絡我們歡樂旅遊，Email：service@happytravel.com，電話：02-1234-5678"
 
-
-
-
-def handle_upload(files, progress=gr.Progress()):
-    new_files = []
-    total = len(files)
-    for idx, file in enumerate(files):
-        filename = os.path.basename(file.name)
-        dest = os.path.join(DOCUMENTS_PATH, filename)
-        shutil.copyfile(file.name, dest)
-        new_files.append(filename)
-        progress((idx + 1) / total, desc=f"複製檔案：{filename}")
-    progress(0.8, desc="正在匯入向量庫 ...")
-    current_docs_state = get_current_docs_state()
-    last_docs_state = load_last_docs_state()
-    db = None
-    if os.path.exists(VECTOR_STORE_PATH) and os.listdir(VECTOR_STORE_PATH):
-        db = FAISS.load_local(VECTOR_STORE_PATH, embedding_model, allow_dangerous_deserialization=True)
-    else:
-        db = build_vector_store(current_docs_state)
-        return (f"向量庫首次建立完成，共匯入 {len(new_files)} 檔案。", get_uploaded_files_list())
-    add_new_files_to_vector_store(db, new_files, current_docs_state)
-    progress(1.0, desc="完成！")
-    return (f"成功匯入 {len(new_files)} 檔案並加入向量庫：{', '.join(new_files)}", get_uploaded_files_list())
-
-# ===== Gradio UI 主程式（新版版面配置） =====
-with gr.Blocks() as demo:
-    gr.Markdown("# Cohere 向量檢索問答機器人")
-    with gr.Row():
-        with gr.Column(scale=2):
-            question_box = gr.Textbox(label="輸入問題", placeholder="請輸入問題")
-            submit_btn = gr.Button("送出")
-            answer_box = gr.Textbox(label="AI 回答")
-        with gr.Column(scale=1):
-            upload_box = gr.File(
-                label="上傳新文件（支援 doc/docx/xls/xlsx/pdf/txt/csv，多選）",
-                file_count="multiple",
-                file_types=[".doc", ".docx", ".xls", ".xlsx", ".pdf", ".txt", ".csv"]
-            )
-            upload_btn = gr.Button("匯入並轉換成向量資料庫")
-            status_box = gr.Textbox(label="操作狀態/訊息")
-            file_list_box = gr.Textbox(label="已上傳檔案清單", value=get_uploaded_files_list(), interactive=False, lines=8)
-    upload_btn.click(
-        fn=handle_upload,
-        inputs=[upload_box],
-        outputs=[status_box, file_list_box]
-    )
-    submit_btn.click(fn=rag_answer, inputs=question_box, outputs=answer_box)
-
-# ===== FastAPI 設定 =====
+# ====== FastAPI 啟動區 ======
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -179,10 +130,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-from gradio.routes import mount_gradio_app
-app = mount_gradio_app(app, demo, path="/gradio")
 
-@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.get("/")
 async def root():
     return {"status": "running"}
 
@@ -193,41 +142,20 @@ async def webhook(request: Request):
     reply = rag_answer(user_message)
     return {"reply": reply}
 
-# ===== LINE BOT 設定 =====
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
-LINE_API_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
+# ====== 啟動 Gradio 並掛載到 FastAPI ======
+with gr.Blocks() as demo:
+    gr.Markdown("# 歡樂旅遊 智能問答機器人")
+    with gr.Row():
+        with gr.Column():
+            qbox = gr.Textbox(label="請輸入問題")
+            abox = gr.Textbox(label="AI 回答")
+            btn = gr.Button("送出")
+            btn.click(fn=rag_answer, inputs=qbox, outputs=abox)
 
-def verify_line_signature(request_body: bytes, x_line_signature: str) -> bool:
-    hash = hmac.new(LINE_CHANNEL_SECRET.encode('utf-8'), request_body, hashlib.sha256).digest()
-    signature = base64.b64encode(hash)
-    return hmac.compare_digest(signature, x_line_signature.encode('utf-8'))
+from gradio.routes import mount_gradio_app
+app = mount_gradio_app(app, demo, path="/gradio")
 
-@app.post("/line/webhook")
-async def line_webhook(request: Request, x_line_signature: str = Header(None)):
-    body = await request.body()
-    if not verify_line_signature(body, x_line_signature):
-        raise HTTPException(status_code=400, detail="Invalid signature")
-    payload = await request.json()
-    events = payload.get("events", [])
-    for event in events:
-        if event["type"] == "message" and event["message"]["type"] == "text":
-            user_text = event["message"]["text"]
-            reply_token = event["replyToken"]
-            answer = rag_answer(user_text)
-            headers = {
-                "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
-                "Content-Type": "application/json"
-            }
-            data = {
-                "replyToken": reply_token,
-                "messages": [
-                    {
-                        "type": "text",
-                        "text": answer
-                    }
-                ]
-            }
-            async with httpx.AsyncClient() as client:
-                await client.post(LINE_API_REPLY_URL, headers=headers, json=data)
-    return JSONResponse(content={"status": "ok"})
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.getenv("PORT", "10000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)  # reload=False 可避免 Render 問題
