@@ -171,7 +171,13 @@ def ensure_qa():
 
 def rag_answer(question):
     ensure_qa()
-    return qa.run(question)
+    answer = qa.run(question)
+    if len(answer) > 50:
+        # 建議的相關網址（可改為您實際的資源連結）
+        search_url = f"https://www.google.com/search?q={question}"
+        return f"此問題較為複雜，建議參考以下連結了解更多：{search_url}\n\n可直接聯絡我們歡樂旅遊，Email：service@happytravel.com，電話：02-1234-5678"
+    return f"{answer}\n\n可直接聯絡我們歡樂旅遊，Email：service@happytravel.com，電話：02-1234-5678"
+
 
 def handle_upload(files, progress=gr.Progress()):
     new_files = []
