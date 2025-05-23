@@ -1,11 +1,11 @@
 services:
   - type: web
-    name: cohere-rag-app
+    name: rag-bot-service
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: DEBUG_MODE
-        value: "1"
-      - key: PORT
-        value: "10000"
+      - key: OPENAI_API_KEY
+      - key: SIMILARITY_THRESHOLD
+        value: "0.9"
