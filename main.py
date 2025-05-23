@@ -16,6 +16,8 @@ from utils import load_documents_from_folder
 from typing import List
 import httpx
 import time  # 新增，控制呼叫頻率
+from transformers import pipeline
+
 
 # ====== Cohere & 向量庫設定 ======
 COHERE_API_KEY = os.getenv("COHERE_API_KEY", "")
@@ -169,14 +171,43 @@ def ensure_qa():
             retriever=vectorstore.as_retriever()
         )
 
+
+# 初始化 BART 精煉模型
+summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+
+def refine_question(question: str) -> str:
+    try:
+        summary = summarizer(question, max_length=15, min_length=5, do_sample=False)
+        return summary[0]["summary_text"]
+    except Exception:
+        return "歡樂旅遊"
+
+def classify_question_intent(question: str) -> str:
+    if any(x in question for x in ["多少", "價格", "費用", "價錢"]):
+        return "詢價"
+    elif any(x in question for x in ["行程", "去哪", "路線"]):
+        return "查詢行程"
+    elif any(x in question for x in ["訂位", "預約", "報名"]):
+        return "預約"
+    else:
+        return "一般問題"
+
 def rag_answer(question):
     ensure_qa()
     answer = qa.run(question)
+
     if len(answer) > 50:
-        # 建議的相關網址（可改為您實際的資源連結）
-        search_url = f"https://www.google.com/search?q={calgarytours}"
-        return f"此問題較為複雜，建議參考以下連結了解更多：{search_url}\n\n可直接聯絡我們歡樂旅遊，Email：service@happytravel.com，電話：02-1234-5678"
+        refined_question = refine_question(question)
+        intent = classify_question_intent(question)
+        search_url = f"https://www.google.com/search?q={refined_question}"
+        return (
+            f"此問題可能屬於「{intent}」類型，建議參考以下連結了解更多：{search_url}\n\n"
+            "可直接聯絡我們歡樂旅遊，Email：service@happytravel.com，電話：02-1234-5678"
+        )
+
     return f"{answer}\n\n可直接聯絡我們歡樂旅遊，Email：service@happytravel.com，電話：02-1234-5678"
+
+
 
 
 def handle_upload(files, progress=gr.Progress()):
