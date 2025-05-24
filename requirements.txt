@@ -1,15 +1,18 @@
 fastapi
 uvicorn
 gradio
+langchain
 langchain-community
 huggingface_hub
-sentence-transformers # 新增，用於HuggingFaceEmbeddings
+sentence-transformers
 faiss-cpu
 unstructured
 pypdf
 python-docx
 xlrd
+openpyxl # 確保有這個，用於處理 .xlsx 檔案
+langchain-huggingface # <--- 確保有這一行 (為了最新兼容性)
 transformers>=4.40.0
 torch>=2.1.0
 httpx
-line-bot-sdk # 新增，用於LINE Bot
+line-bot-sdk
