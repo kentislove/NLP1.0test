@@ -7,3 +7,4 @@ openai
 faiss-cpu
 python-dotenv
 line-bot-sdk==2.4.1
+tiktoken
