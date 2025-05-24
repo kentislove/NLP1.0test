@@ -4,12 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import gradio as gr
 from typing import List, Tuple
-# from langchain.embeddings.openai import OpenAIEmbeddings # 移除 OpenAI Embedding
-# from langchain.llms import OpenAI # 移除 OpenAI LLM
-# from langchain.llms import Cohere # 移除 Cohere LLM
-
 # 改用開源嵌入模型
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
+
 from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import CharacterTextSplitter
 from utils import load_documents_from_folder
