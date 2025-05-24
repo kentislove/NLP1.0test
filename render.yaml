@@ -1,11 +1,22 @@
 services:
   - type: web
-    name: rag-bot-service
+    name: faiss-nlp-rag-app # 更改服務名稱以反映功能
     env: python
-    plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
     envVars:
-      - key: OPENAI_API_KEY
-      - key: SIMILARITY_THRESHOLD
-        value: "0.9"
+      - key: DEBUG_MODE
+        value: "1"
+      - key: PORT
+        value: "10000"
+      # 移除以下 API Keys，或保持它們為空字符串
+      # - key: OPENAI_API_KEY
+      #   value: ""
+      # - key: COHERE_API_KEY
+      #   value: ""
+      - key: LINE_CHANNEL_ACCESS_TOKEN # 您的 LINE Channel Access Token
+        value: "oWDmGO59uHlp2pmJ/4Zw8wh0ib3mfs66xs6mZEW5hxOlReLp2xPBaRTT74nuOfctOy0z8Kb/PeVCUyAfA1VCRRpKrPBlcyJiwYDj7FgQyUQIfCpMBxz6EsUozTlQ2Hr5yG4Nyv/LCB+6OP2OxAX5LwdB04t89/1O/w1cDnyilFU=" # << 替換成您的實際值
+      - key: LINE_CHANNEL_SECRET # 您的 LINE Channel Secret
+        value: "00b0cdd3da8f88eb8a4cf90277a8de0f" # << 替換成您的實際值
+      - key: SIMILARITY_THRESHOLD # 新增相似度閾值環境變數
+        value: "0.75" # 可依需求調整，數字越大要求相似度越高
