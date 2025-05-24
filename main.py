@@ -4,30 +4,44 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import gradio as gr
 from typing import List, Tuple
+
 # 改用開源嵌入模型
-from langchain_huggingface import HuggingFaceEmbeddings
+# 使用新的導入路徑以避免 LangChainDeprecationWarning
+from langchain_huggingface import HuggingFaceEmbeddings # <--- IMPORTANT CHANGE HERE
 
 from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import CharacterTextSplitter
-from utils import load_documents_from_folder
+from utils import load_documents_from_folder # 確保 utils.py 檔案在同一個目錄下
 
 # LINE Bot SDK
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 
-# ====== 環境變數設定 ======
-# 不再需要 OPENAI_API_KEY 和 COHERE_API_KEY
+# ====== 環境變數設定 (只保留 LINE Bot 相關，移除 LLM API Key) ======
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
-SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75")) # 調整相似度閾值，0.75-0.85 較常見，可依需求調整
+# 調整相似度閾值，0.75-0.85 較常見，可依需求調整
+# L2 距離越小越相似，這裡的 SIMILARITY_THRESHOLD 是轉換後的相似度
+SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
 
 # ====== 模型與向量索引設定 ======
-embedding_model_name = "sentence-transformers/paraphrase-MiniLM-L3-v2" # <--- 修改這裡！
+# 使用您找到的 "tiny" 模型，例如 'cointegrated/rubert-tiny' 或 'sergeyzh/rubert-tiny-sts'
+# 為了確保模型能夠處理英文或其他常用語言，我建議嘗試以下其中一個：
+# embedding_model_name = "cointegrated/rubert-tiny" # <--- 您在圖中找到的一個
+# embedding_model_name = "sergeyzh/rubert-tiny-sts" # <--- 您在圖中找到的另一個
+# embedding_model_name = "johnpaulbin/bge-m3-distilled-tiny" # 另一個可能更通用的英文小模型
+
+# 這裡先選用一個，如果不行再換另一個 "tiny" 模型
+# 根據您的截圖，我會選用 cointegrated/rubert-tiny 或 sergeyzh/rubert-tiny-sts，它們是 sentence-transformers 系列的。
+# 選擇一個實際存在且能用於 sentence_transformers 的 tiny 模型。
+# 這裡假設 'cointegrated/rubert-tiny' 是一個好的起點。
+embedding_model_name = "cointegrated/rubert-tiny" # <--- 將此行替換為您選擇的 tiny 模型
+
 embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name)
 
 VECTOR_STORE_PATH = "./faiss_index"
-DOCUMENTS_PATH = "./docs"
+DOCUMENTS_PATH = "./docs" # 這個在部署時其實可以不用讀取，但為了防止意外，保留路徑定義
 
 # 初始化 LINE Bot
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
@@ -36,115 +50,82 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 # 確保資料目錄與索引資料夾
 os.makedirs(VECTOR_STORE_PATH, exist_ok=True)
 os.makedirs(DOCUMENTS_PATH, exist_ok=True)
-vectorstore: FAISS = None
+vectorstore: FAISS = None # 全局變數用於儲存載入的向量儲存
 
-# ====== 向量索引建立 ======
+# ====== 向量索引建立 (這個函數主要用於本地建立索引，部署時應避免執行) ======
 def build_vector_store() -> FAISS:
     docs = load_documents_from_folder(DOCUMENTS_PATH)
     if not docs:
-        raise RuntimeError(f"'{DOCUMENTS_PATH}' 資料夾內至少要有一個 txt 或其他支援的檔！")
-    # 調整 chunk_size 和 chunk_overlap 參數以適應您的文檔內容和期望的片段大小
+        # 在部署環境下，如果沒有預先建立索引且 docs 為空，這裡會出錯
+        # 這是期望的行為，因為應該要有預先建立的索引
+        raise RuntimeError(f"在 '{DOCUMENTS_PATH}' 資料夾中找不到文件，無法建立索引。請確保已預先建立 FAISS 索引。")
     splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=100)
     texts = splitter.split_documents(docs)
     faiss_db = FAISS.from_documents(texts, embedding_model)
     faiss_db.save_local(VECTOR_STORE_PATH)
     return faiss_db
 
-# 載入或建立索引
+# 載入或建立索引 (部署時主要執行載入，移除重建回退邏輯以避免 OOM)
 def ensure_vectorstore():
     global vectorstore
-    if not os.path.exists(os.path.join(VECTOR_STORE_PATH, "index.faiss")):
-        print("未找到 FAISS 索引，開始建立...")
-        try:
-            vectorstore = build_vector_store()
-            print("FAISS 索引建立完成。")
-        except RuntimeError as e:
-            print(f"建立 FAISS 索引失敗: {e}")
-            vectorstore = None
+    if vectorstore is not None: # 如果已經載入過，就直接返回
+        return
+
+    # 檢查 faiss_index 資料夾是否存在 index.faiss 和 index.pkl
+    faiss_index_exists = os.path.exists(os.path.join(VECTOR_STORE_PATH, "index.faiss")) and \
+                         os.path.exists(os.path.join(VECTOR_STORE_PATH, "index.pkl"))
+
+    if not faiss_index_exists:
+        # 在部署環境下，如果沒有預先建立索引，這將是一個致命錯誤
+        print("致命錯誤：未找到 FAISS 索引。請確認已在本地建立索引並將 'faiss_index' 資料夾推送到 Git！")
+        vectorstore = None # 設置為 None，讓 rag_answer 返回錯誤訊息
+        # 您甚至可以選擇在這裡拋出異常，讓服務直接啟動失敗，而不是繼續運行一個沒有知識庫的服務
+        # raise RuntimeError("FAISS 索引缺失，應用程式無法啟動。")
     else:
         print("載入現有 FAISS 索引...")
         try:
             vectorstore = FAISS.load_local(VECTOR_STORE_PATH, embedding_model)
             print("FAISS 索引載入完成。")
         except Exception as e:
-            print(f"載入 FAISS 索引失敗: {e}")
-            vectorstore = None
+            print(f"致命錯誤：載入 FAISS 索引失敗: {e}")
+            print("請檢查 'faiss_index' 資料夾的完整性，並確認 'embedding_model_name' 是否與建立索引時一致。")
+            vectorstore = None # 設置為 None，讓 rag_answer 返回錯誤訊息
 
 # ====== FAISS RAG (純檢索) 問答邏輯 ======
 def rag_answer(question: str) -> str:
+    # 確保 vectorstore 在處理請求前被載入
     ensure_vectorstore()
 
     if vectorstore:
         try:
-            # 使用 cosine distance，分數越低代表越相似。
-            # FAISS 的 similarity_search_with_score 返回的是 L2 distance (歐幾里得距離)，分數越低越相似。
-            # 這裡我們將它轉換為一個 0-1 範圍的相似度，方便閾值判斷。
-            # 轉換公式 `1 / (1 + distance)` 是一個簡單的非線性轉換，將距離映射到相似度。
-            # 如果使用 cosine similarity，則直接取相似度，值介於 -1 到 1，越接近 1 越相似。
-            # HuggingFaceEmbeddings 預設使用 cosine similarity。
             docs_and_scores: List[Tuple] = vectorstore.similarity_search_with_score(question, k=1)
             
             if docs_and_scores:
                 doc, score = docs_and_scores[0]
-                # HuggingFaceEmbeddings 通常返回的是 L2 distance (距離)，所以距離越小越相似。
-                # 我們需要確保 SIMILARITY_THRESHOLD 是針對距離的。
-                # 或者可以將距離轉換為相似度 (例如 1 / (1 + distance) 或 (max_dist - dist) / max_dist )
-                # 這裡假設 score 是距離，我們希望它小於某個閾值。
-                # 如果您的 embedding_model 返回的是相似度，則需要將 SIMILARITY_THRESHOLD 的判斷方向反過來。
-                
-                # 由於HuggingFaceEmbeddings搭配FAISS預設是L2距離，距離越小代表越相似。
-                # 因此我們的SIMILARITY_THRESHOLD應該設定為一個「最大允許距離」，而不是相似度。
-                # 這裡為了維持原有的 'similarity' 概念，我們做一個簡單的轉換，但請注意其非線性。
                 distance = score
-                # 簡單轉換為一個非線性的「相似度」概念，讓它介於 0 到 1
-                # 距離越小，相似度越接近 1
-                # 這裡的 SIMILARITY_THRESHOLD 還是要對應到轉換後的「相似度」值。
-                # 若您想直接判斷距離，則 SIMILARITY_THRESHOLD 應該設為距離的最大值。
-                # 例如，如果距離小於 0.5 才算匹配，SIMILARITY_THRESHOLD = 0.5
-                
-                # 為了避免混淆，我們直接判斷距離，並調整 SIMILARITY_THRESHOLD 的意義
-                # 將 SIMILARITY_THRESHOLD 設為「最大距離」，距離越小越相似
-                # 原始程式碼的 SIMILARITY_THRESHOLD 被解釋為「相似度要大於此值」，因此我反過來判斷
-                # 如果是 L2 距離，分數越小越好，因此我們需要一個 `max_distance_threshold`
-                # 這裡保持原始的 SIMILARITY_THRESHOLD 變數名，但其含義應改為「最小相似度」
-                # 重新計算一個近似的相似度值來與 SIMILARITY_THRESHOLD 比較
-                
-                # 更精確的處理方式是使用 Cosine Similarity (夾角餘弦)
-                # 但 FAISS 預設是 L2 Distance。如果需要 Cosine Similarity，
-                # Langchain 的 `from_documents` 在 FAISS 向量儲存預設就是用 L2 距離。
-                # 如果要使用 Cosine Similarity，需要先正規化 embedding，
-                # 或者在 `similarity_search_with_score` 時指定 `score_threshold` (但它也是基於距離的)。
-                
-                # 最簡單的方式：將 SIMILARITY_THRESHOLD 理解為「最大允許的距離」，而非相似度。
-                # 或直接調整 SIMILARITY_THRESHOLD 的初始值，讓它代表距離。
-                
-                # 我將 SIMILARITY_THRESHOLD 變數名保持不變，但將其視為「所需的最低相似度」。
-                # 由於 FAISS 返回的是 L2 距離 (distance)，距離越小越相似。
-                # 我將距離反向轉換為一個簡單的相似度值，以便與 SIMILARITY_THRESHOLD 比較。
-                # 這個轉換 `max(0, 1 - distance / some_max_expected_distance)` 更能表示相似度
-                # 或者直接用 `score` 與 `SIMILARITY_THRESHOLD` 比較，但 SIMILARITY_THRESHOLD 需改為距離上限。
-                
-                # 為了簡化，我將 SIMILARITY_THRESHOLD 視為一個較高閾值，並讓 score (距離) 小於某個值才算相似。
-                # 假設 SIMILARITY_THRESHOLD 0.75-0.9 代表較高相似度，對應 L2 距離就是較小的值。
-                
-                # 這裡保留原有的 1/(1+distance) 轉換，但強調這是近似。
-                similarity = 1 / (1 + distance) 
+                # 這裡的 SIMILARITY_THRESHOLD 是針對轉換後的相似度
+                # L2 距離越小越好，我們將其反向映射到一個 0-1 相似度
+                # 簡單轉換：相似度 = 1 / (1 + 距離)
+                # 距離為 0 時相似度為 1；距離越大，相似度越趨近 0
+                similarity = 1 / (1 + distance)
                 print(f"RAG 搜尋結果：L2 距離={distance:.4f}, 轉換後相似度={similarity:.4f}")
 
-                # 判斷是否達標：轉換後相似度大於等於設定的閾值
                 if similarity >= SIMILARITY_THRESHOLD:
                     print("RAG 相似度達標，使用內部資料回答。")
                     return doc.page_content
                 else:
                     print("RAG 相似度未達標，返回預設訊息。")
                     return "抱歉，我只知道關於內部資料的資訊，無法回答您的問題。請嘗試提出更相關的問題。"
+            else:
+                print("未找到任何相關文檔。")
+                return "抱歉，我只知道關於內部資料的資訊，無法回答您的問題。請嘗試提出更相關的問題。"
 
         except Exception as e:
             print(f"RAG 搜尋失敗: {e}")
             return "抱歉，在搜尋內部資料時發生錯誤，請稍後再試。"
     else:
-        print("FAISS 向量索引未成功載入或建立。")
-        return "抱歉，核心知識庫尚未準備好，請稍後再試。"
+        print("FAISS 向量索引未成功載入。無法進行檢索。")
+        return "抱歉，核心知識庫尚未準備好，請聯繫管理員。"
 
 # ====== FastAPI + LINE + Gradio ======
 app = FastAPI()
@@ -199,4 +180,13 @@ if __name__ == "__main__":
     import uvicorn
     # 將 port 設定為 Render 預設的 10000
     port = int(os.getenv("PORT", "10000"))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+    
+    # 在啟動 Uvicorn 服務之前，確保向量索引已經載入
+    ensure_vectorstore() 
+
+    # 只有當 vectorstore 成功載入時才啟動服務
+    if vectorstore is not None:
+        uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
+    else:
+        print("由於 FAISS 索引載入失敗，應用程式無法正常啟動。")
+        exit(1) # 強制退出，避免在沒有知識庫的情況下運行
