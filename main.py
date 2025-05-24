@@ -80,6 +80,7 @@ async def ask(request: Request):
 # ====== Cohere FAQ 語意檢索 ======
 co = cohere.Client(COHERE_API_KEY)
 
+
 def load_faqs():
     faqs = []
     if not os.path.exists(FAQ_FILE):
@@ -141,11 +142,12 @@ try:
 except Exception:
     vectorstore = build_vector_store()
 
+# 問答函式，包含 global 聲明在首行
 def rag_answer(question: str) -> str:
+    global vectorstore
     try:
         docs_and_scores = vectorstore.similarity_search_with_score(question, k=1)
     except Exception:
-        global vectorstore
         vectorstore = build_vector_store()
         docs_and_scores = vectorstore.similarity_search_with_score(question, k=1)
     if docs_and_scores:
