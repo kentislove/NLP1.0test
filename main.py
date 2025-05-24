@@ -28,7 +28,7 @@ SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75")) # 調整
 # ====== 模型與向量索引設定 ======
 # 改用 HuggingFace 的開源嵌入模型，例如 'sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2'
 # 這個模型支援多國語言，且體積較小，適合部署。
-embedding_model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
 embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name)
 
 VECTOR_STORE_PATH = "./faiss_index"
