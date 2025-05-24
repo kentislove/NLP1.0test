@@ -27,7 +27,7 @@ SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.9"))
 # 嵌入模型：text-embedding-ada-002
 embedding_model = OpenAIEmbeddings(
     openai_api_key=OPENAI_API_KEY,
-    model="text-embedding-3-small"
+    model="text-embedding-ada-002"
 )
 # 主要 LLM：gpt-3.5-turbo
 openai_llm = OpenAI(
