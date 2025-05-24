@@ -1,13 +1,15 @@
 fastapi
-uvicorn[standard]
+uvicorn
 gradio
-langchain
 langchain-community
-openai
+huggingface_hub
+sentence-transformers # 新增，用於HuggingFaceEmbeddings
 faiss-cpu
-python-dotenv
-line-bot-sdk==2.4.1
-tiktoken
-requests
-cohere
-numpy
+unstructured
+pypdf
+python-docx
+xlrd
+transformers>=4.40.0
+torch>=2.1.0
+httpx
+line-bot-sdk # 新增，用於LINE Bot
