@@ -36,7 +36,7 @@ SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.75"))
 # 根據您的截圖，我會選用 cointegrated/rubert-tiny 或 sergeyzh/rubert-tiny-sts，它們是 sentence-transformers 系列的。
 # 選擇一個實際存在且能用於 sentence_transformers 的 tiny 模型。
 # 這裡假設 'cointegrated/rubert-tiny' 是一個好的起點。
-embedding_model_name = "cointegrated/rubert-tiny" # <--- 將此行替換為您選擇的 tiny 模型
+embedding_model_name = "johnpaulbin/bge-m3-distilled-tiny" # <--- 將此行替換為您選擇的 tiny 模型
 
 embedding_model = HuggingFaceEmbeddings(model_name=embedding_model_name)
 
