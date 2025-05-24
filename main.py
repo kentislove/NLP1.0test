@@ -59,15 +59,12 @@ def build_vector_store() -> FAISS:
 # 載入或建立索引
 def ensure_vectorstore():
     global vectorstore
-    if vectorstore is None:
-        if os.path.exists(VECTOR_STORE_PATH):
-            vectorstore = FAISS.load_local(
-                VECTOR_STORE_PATH,
-                embedding_model,
-                allow_dangerous_deserialization=True
-            )
-        else:
-            vectorstore = build_vector_store()
+    if not os.path.exists(os.path.join(VECTOR_STORE_PATH, "index.faiss")):
+        print("未找到 FAISS 索引，開始建立...")
+        vectorstore = build_vector_store()
+    else:
+        print("載入現有 FAISS 索引...")
+        vectorstore = FAISS.load_local(VECTOR_STORE_PATH, embedding_model)
 
 # ====== RAG 問答邏輯 ======
 def rag_answer(question: str) -> str:
